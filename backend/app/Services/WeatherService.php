@@ -37,7 +37,7 @@ class WeatherService
             throw new \Exception($errorMessage);
         }
 
-        $data = $weatherResponse->json();
+        $weatherData = $weatherResponse->json();
 
         // Fetch forecast data
         $forecastResponse = Http::get('https://api.openweathermap.org/data/2.5/forecast', [
@@ -66,8 +66,35 @@ class WeatherService
                 if (count($dailyForecasts) >= 3) break;
             }
         }
-
-        $data['forecast'] = $dailyForecasts;
+        
+        // Format data to match frontend expectations
+        $data = [
+            'main' => $weatherData['main'],
+            'current' => [
+                'temp' => $weatherData['main']['temp'],
+                'feels_like' => $weatherData['main']['feels_like'],
+                'pressure' => $weatherData['main']['pressure'],
+                'humidity' => $weatherData['main']['humidity'],
+                'weather' => $weatherData['weather'],
+                'wind_speed' => $weatherData['wind']['speed'],
+                'wind_deg' => $weatherData['wind']['deg'],
+                'dt' => $weatherData['dt']
+            ],
+            'daily' => array_map(function($forecast) {
+                return [
+                    'dt' => $forecast['dt'],
+                    'temp' => [
+                        'min' => $forecast['main']['temp_min'],
+                        'max' => $forecast['main']['temp_max']
+                    ],
+                    'weather' => $forecast['weather']
+                ];
+            }, $dailyForecasts),
+            'city' => [
+                'name' => $weatherData['name'],
+                'country' => $weatherData['sys']['country']
+            ]
+        ];
 
         Cache::put($cacheKey, $data, 1800); // Cache for 30 minutes
         return $data;
