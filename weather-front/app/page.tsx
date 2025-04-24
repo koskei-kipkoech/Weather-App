@@ -1,85 +1,104 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { Cloud } from "lucide-react"
+import { Cloud, Droplet, Wind, Search, Thermometer } from "lucide-react"
 import Image from "next/image"
+import { fetchWeatherByCity, WeatherData } from "../lib/api"
 
-// API key
-const API_KEY = "0d7f2008c9c666e8df8652df24c9e174"
-
-// Types
-interface WeatherData {
-  name: string
-  main: {
-    temp: number
-    feels_like: number
-    temp_min: number
-    temp_max: number
-    pressure: number
-    humidity: number
-  }
-  weather: {
-    id: number
-    main: string
-    description: string
-    icon: string
-  }[]
-  wind: {
-    speed: number
-    deg: number
-  }
-  sys: {
-    country: string
-    sunrise: number
-    sunset: number
-  }
-  dt: number
+// Helper functions
+const getWeatherIconUrl = (iconCode: string) => {
+  return `https://openweathermap.org/img/wn/${iconCode}@4x.png`
 }
 
-interface ForecastData {
-  dt: number
-  main: {
-    temp: number
-    feels_like: number
-    temp_min: number
-    temp_max: number
-    pressure: number
-    humidity: number
-  }
-  weather: {
-    id: number
-    main: string
-    description: string
-    icon: string
-  }[]
-  wind: {
-    speed: number
-    deg: number
-  }
-  dt_txt: string
+const formatDate = (timestamp: number): string => {
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })
 }
+
+const getWindSpeed = (speed: number, unit: string): string => {
+  if (unit === "metric") {
+    const kmh = speed * 3.6;
+    return `${Math.round(kmh)} km/h`;
+  } else {
+    return `${Math.round(speed)} mph`;
+  }
+}
+
+const getWindDirection = (degrees: number): string => {
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const index = Math.round(degrees / 45) % 8;
+  return directions[index];
+}
+
+const getPressureDescription = (pressure: number, unit: string): string => {
+  if (unit === "metric") {
+    // Assuming hPa
+    if (pressure < 1000) return "Low pressure";
+    if (pressure >= 1000 && pressure < 1015) return "Normal pressure";
+    return "High pressure";
+  } else {
+    // Assuming inHg, but thresholds are not adjusted here for simplicity
+    return "Pressure: " + pressure + " inHg";
+  }
+}
+
+// Calendar and Gauge components
+const Calendar = ({ size = 24, className = "" }) => {
+  return (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      className={className}
+    >
+      <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+      <line x1="16" x2="16" y1="2" y2="6" />
+      <line x1="8" x2="8" y1="2" y2="6" />
+      <line x1="3" x2="21" y1="10" y2="10" />
+      <path d="M8 14h.01" />
+      <path d="M12 14h.01" />
+      <path d="M16 14h.01" />
+      <path d="M8 18h.01" />
+      <path d="M12 18h.01" />
+      <path d="M16 18h.01" />
+    </svg>
+  );
+};
+
+const Gauge = ({ size = 24, className = "" }) => {
+  return (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      className={className}
+    >
+      <path d="m12 14 4-4" />
+      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+    </svg>
+  );
+};
 
 export default function Home() {
   const [city, setCity] = useState<string>("")
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
-  const [forecastData, setForecastData] = useState<ForecastData[] | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [unit, setUnit] = useState<"metric" | "imperial">("metric")
 
-  // Function to convert Celsius to Fahrenheit
-  const celsiusToFahrenheit = (celsius: number): number => {
-    return (celsius * 9) / 5 + 32
-  }
-
-  // Function to convert m/s to km/h
-  const msToKmh = (ms: number): number => {
-    return ms * 3.6
-  }
-
-  // Function to handle search
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -89,43 +108,11 @@ export default function Home() {
     setError(null)
 
     try {
-      // Fetch current weather
-      const weatherResponse = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&units=metric&appid=${API_KEY}`,
-      )
-
-      if (!weatherResponse.ok) {
-        throw new Error(`Error fetching weather data: ${weatherResponse.statusText}`)
+      const data = await fetchWeatherByCity(city, unit)
+      if (!data || !data.main) {
+        throw new Error('Invalid weather data received')
       }
-
-      const weatherResult = await weatherResponse.json()
-      setWeatherData(weatherResult)
-
-      // Fetch forecast
-      const forecastResponse = await fetch(
-        `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city)}&units=metric&appid=${API_KEY}`,
-      )
-
-      if (!forecastResponse.ok) {
-        throw new Error(`Error fetching forecast data: ${forecastResponse.statusText}`)
-      }
-
-      const forecastResult = await forecastResponse.json()
-
-      // Filter to get one forecast per day
-      const dailyForecasts: ForecastData[] = []
-      const processedDays = new Set()
-
-      for (const forecast of forecastResult.list) {
-        const date = forecast.dt_txt.split(" ")[0]
-        if (!processedDays.has(date)) {
-          dailyForecasts.push(forecast)
-          processedDays.add(date)
-          if (dailyForecasts.length >= 3) break
-        }
-      }
-
-      setForecastData(dailyForecasts)
+      setWeatherData(data)
     } catch (err) {
       console.error(err)
       setError("Failed to fetch weather data. Please try again.")
@@ -134,201 +121,282 @@ export default function Home() {
     }
   }
 
-  // Format date for display
-  const formatDate = (timestamp: number): string => {
-    const date = new Date(timestamp * 1000)
-    return date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })
-  }
-
-  // Get weather icon URL
-  const getWeatherIconUrl = (iconCode: string) => {
-    return `https://openweathermap.org/img/wn/${iconCode}@4x.png`
-  }
-
   return (
-    <main className="min-h-screen bg-[#f0f9ff] p-4">
-      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-[350px_1fr] min-h-[600px]">
-          {/* Left Panel - Current Weather */}
-          <div className="bg-gradient-to-b from-[#3b82f6] to-[#2563eb] text-white p-8 flex flex-col">
-            {/* Search Form - Mobile Only */}
-            <form onSubmit={handleSearch} className="mb-8 md:hidden">
-              <div className="flex">
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Search city..."
-                  className="w-full px-4 py-2 rounded-l-lg text-gray-800 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="bg-[#1d4ed8] hover:bg-[#1e40af] px-4 py-2 rounded-r-lg"
-                  disabled={loading}
-                >
-                  GO
-                </button>
-              </div>
-            </form>
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col items-center justify-center py-6 mb-6">
+          <h1 className="text-3xl md:text-4xl font-bold text-blue-800 flex items-center gap-2 mb-2">
+            <Cloud className="text-blue-600" /> Weather Forecast
+          </h1>
+          <p className="text-blue-600 text-center">Get real-time weather updates for any city</p>
+        </div>
 
-            {weatherData ? (
-              <>
-                <div className="flex justify-center items-center mb-4">
-                  <div className="relative w-32 h-32">
-                    <Image
-                      src={getWeatherIconUrl(weatherData.weather[0].icon) || "/placeholder.svg"}
-                      alt={weatherData.weather[0].description}
-                      width={120}
-                      height={120}
-                      className="object-contain"
-                    />
-                  </div>
-                </div>
-                <div className="text-center mb-4">
-                  <h1 className="text-6xl font-bold">
-                    {unit === "metric"
-                      ? Math.round(weatherData.main.temp)
-                      : Math.round(celsiusToFahrenheit(weatherData.main.temp))}
-                    °{unit === "metric" ? "C" : "F"}
-                  </h1>
-                  <p className="text-2xl capitalize mt-2">{weatherData.weather[0].description}</p>
-                </div>
-                <div className="mt-auto text-center">
-                  <p className="text-xl">{formatDate(weatherData.dt)}</p>
-                  <p className="text-xl">
-                    {weatherData.name}, {weatherData.sys.country}
-                  </p>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center">
-                <Cloud className="w-24 h-24 mb-4 opacity-50" />
-                <p className="text-xl text-center">
-                  {loading ? "Loading weather data..." : "Enter a city to get weather information"}
-                </p>
-                {error && <p className="text-red-200 mt-2 text-center">{error}</p>}
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr] min-h-[650px]">
+            {/* Left Panel - Current Weather */}
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-800 text-white p-8 flex flex-col relative overflow-hidden">
+              {/* Background pattern */}
+              <div className="absolute top-0 left-0 w-full h-full opacity-10">
+                <div className="absolute top-10 left-10 w-40 h-40 rounded-full bg-white"></div>
+                <div className="absolute bottom-20 right-10 w-60 h-60 rounded-full bg-white"></div>
               </div>
-            )}
-          </div>
 
-          {/* Right Panel - Search, Forecast, Details */}
-          <div className="p-6">
-            {/* Search Form and Unit Toggle */}
-            <div className="flex justify-between items-center mb-8">
-              <form onSubmit={handleSearch} className="hidden md:flex flex-1 mr-4">
-                <input
-                  type="text"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Search city..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="submit"
-                  className="bg-[#3b82f6] hover:bg-[#2563eb] text-white px-4 py-2 rounded-r-lg transition-colors"
-                  disabled={loading}
-                >
-                  GO
-                </button>
+              {/* Search Form - Mobile Only */}
+              <form onSubmit={handleSearch} className="mb-8 md:hidden relative z-10">
+                <div className="flex">
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Search city..."
+                    className="w-full px-4 py-3 rounded-l-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-blue-800 hover:bg-blue-900 px-4 py-3 rounded-r-lg transition-colors flex items-center justify-center"
+                    disabled={loading}
+                  >
+                    <Search size={18} />
+                  </button>
+                </div>
               </form>
 
-              <div className="flex border rounded-lg overflow-hidden">
-                <button
-                  className={`px-3 py-1 ${unit === "metric" ? "bg-[#3b82f6] text-white" : "bg-gray-100"}`}
-                  onClick={() => setUnit("metric")}
-                >
-                  °C
-                </button>
-                <button
-                  className={`px-3 py-1 ${unit === "imperial" ? "bg-[#3b82f6] text-white" : "bg-gray-100"}`}
-                  onClick={() => setUnit("imperial")}
-                >
-                  °F
-                </button>
+              <div className="relative z-10 flex-1 flex flex-col">
+                {weatherData ? (
+                  <>
+                    <div className="flex justify-center items-center mb-4">
+                      <div className="relative w-40 h-40">
+                        <Image
+                          src={getWeatherIconUrl(weatherData.current.weather[0].icon) || "/placeholder.svg"}
+                          alt={weatherData.current.weather[0].description}
+                          width={160}
+                          height={160}
+                          className="object-contain"
+                          priority
+                        />
+                      </div>
+                    </div>
+                    <div className="text-center mb-6">
+                      <h1 className="text-7xl font-bold mb-2">
+                        {Math.round(weatherData.current.temp)}
+                        <span className="text-5xl">°{unit === "metric" ? "C" : "F"}</span>
+                      </h1>
+                      <p className="text-2xl capitalize mt-1 font-light">{weatherData.current.weather[0].description}</p>
+                      <p className="text-lg mt-4 opacity-80">
+                        Feels like {Math.round(weatherData.current.feels_like)}°{unit === "metric" ? "C" : "F"}
+                      </p>
+                    </div>
+                    <div className="mt-auto text-center">
+                      <p className="text-xl font-light">{formatDate(weatherData.current.dt)}</p>
+                      <p className="text-2xl font-semibold mt-2">
+                        {weatherData.city.name}, {weatherData.city.country}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center">
+                    <Cloud className="w-24 h-24 mb-6 opacity-50" />
+                    <p className="text-xl text-center font-light">
+                      {loading ? "Loading weather data..." : "Enter a city to get weather information"}
+                    </p>
+                    {error && <p className="text-red-200 mt-4 text-center bg-red-900/20 p-3 rounded-lg">{error}</p>}
+                  </div>
+                )}
               </div>
             </div>
 
-            {weatherData && forecastData && (
-              <>
-                {/* 3-Day Forecast */}
-                <div className="mb-8">
-                  <h2 className="text-xl font-semibold mb-4">3-Day Forecast</h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {forecastData.map((forecast, index) => (
-                      <div key={index} className="bg-white border rounded-lg p-4 text-center">
-                        <h3 className="font-medium text-gray-700 mb-2">
-                          {new Date(forecast.dt * 1000).toLocaleDateString("en-US", { day: "numeric", month: "short" })}
-                        </h3>
-                        <div className="flex justify-center mb-2">
-                          <div className="relative w-16 h-16">
-                            <Image
-                              src={getWeatherIconUrl(forecast.weather[0].icon) || "/placeholder.svg"}
-                              alt={forecast.weather[0].description}
-                              width={60}
-                              height={60}
-                              className="object-contain"
-                            />
+            {/* Right Panel - Search, Forecast, Details */}
+            <div className="p-6 md:p-8">
+              {/* Search Form and Unit Toggle */}
+              <div className="flex justify-between items-center mb-8 gap-4">
+                <form onSubmit={handleSearch} className="hidden md:flex flex-1 mr-4">
+                  <div className="flex w-full relative">
+                    <input
+                      type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Search city..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-r-lg transition-colors flex items-center justify-center gap-2"
+                      disabled={loading}
+                    >
+                      <Search size={18} /> Search
+                    </button>
+                  </div>
+                </form>
+
+                <div className="flex border rounded-lg overflow-hidden shadow-sm">
+                  <button
+                    className={`px-4 py-2 flex items-center gap-1 transition-colors ${
+                      unit === "metric" ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
+                    }`}
+                    onClick={() => setUnit("metric")}
+                  >
+                    <Thermometer size={16} /> °C
+                  </button>
+                  <button
+                    className={`px-4 py-2 flex items-center gap-1 transition-colors ${
+                      unit === "imperial" ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
+                    }`}
+                    onClick={() => setUnit("imperial")}
+                  >
+                    <Thermometer size={16} /> °F
+                  </button>
+                </div>
+              </div>
+
+              {weatherData && (
+                <>
+                  {/* 3-Day Forecast */}
+                  <div className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
+                      <Calendar size={20} className="text-blue-600" /> 3-Day Forecast
+                    </h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {weatherData.daily.slice(0, 3).map((day, index) => (
+                        <div key={index} className="bg-white border border-gray-100 rounded-xl p-5 text-center shadow-sm hover:shadow-md transition-shadow">
+                          <h3 className="font-medium text-gray-700 mb-2">
+                            {new Date(day.dt * 1000).toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" })}
+                          </h3>
+                          <div className="flex justify-center mb-2">
+                            <div className="relative w-20 h-20">
+                              <Image
+                                src={getWeatherIconUrl(day.weather[0].icon) || "/placeholder.svg"}
+                                alt={day.weather[0].description}
+                                width={80}
+                                height={80}
+                                className="object-contain"
+                              />
+                            </div>
                           </div>
+                          <p className="text-lg font-bold text-gray-800">
+                            {Math.round(day.temp.min)}° - {Math.round(day.temp.max)}° {unit === "metric" ? "C" : "F"}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1 capitalize">{day.weather[0].description}</p>
                         </div>
-                        <p className="text-lg font-bold text-gray-800">
-                          {unit === "metric"
-                            ? `${Math.round(forecast.main.temp_min)}-${Math.round(forecast.main.temp_max)}°C`
-                            : `${Math.round(celsiusToFahrenheit(forecast.main.temp_min))}-${Math.round(
-                                celsiusToFahrenheit(forecast.main.temp_max),
-                              )}°F`}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Weather Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-white border rounded-lg p-6">
-                    <h3 className="text-gray-500 font-medium mb-4">Wind Status</h3>
-                    <div className="flex items-center justify-center mb-4">
-                      <span className="text-4xl font-bold mr-2">{Math.round(msToKmh(weatherData.wind.speed))}</span>
-                      <span className="text-xl">km/h</span>
-                    </div>
-                    <div className="flex justify-center">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full border-2 border-gray-300 flex items-center justify-center">
-                          <div
-                            className="absolute w-6 h-1 bg-[#3b82f6] origin-center"
-                            style={{
-                              transform: `rotate(${weatherData.wind.deg}deg)`,
-                              transformOrigin: "center",
-                            }}
-                          />
-                          <div className="w-2 h-2 rounded-full bg-[#3b82f6]" />
-                        </div>
-                        <p className="text-center mt-2 text-sm text-gray-500">N/NW</p>
-                      </div>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="bg-white border rounded-lg p-6">
-                    <h3 className="text-gray-500 font-medium mb-4">Humidity</h3>
-                    <div className="flex items-center justify-center mb-4">
-                      <span className="text-4xl font-bold mr-2">{weatherData.main.humidity}</span>
-                      <span className="text-xl">%</span>
+                  {/* Weather Details */}
+                  <h2 className="text-xl font-semibold mb-4 text-gray-800">Current Conditions</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4">
+                    {/* Wind Status */}
+                    <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="text-gray-500 font-medium mb-2 flex items-center gap-2">
+                        <Wind size={18} className="text-blue-600" /> Wind Status
+                      </h3>
+                      <div className="flex items-center justify-center mb-4">
+                        <span className="text-4xl font-bold mr-2">{getWindSpeed(weatherData.current.wind_speed, unit)}</span>
+                      </div>
+                      <div className="flex justify-center">
+                        <div className="relative">
+                          <div className="w-12 h-12 rounded-full border-2 border-gray-300 flex items-center justify-center">
+                            <div
+                              className="absolute w-8 h-1.5 bg-blue-600 origin-center"
+                              style={{
+                                transform: `rotate(${weatherData.current.wind_deg}deg)`,
+                                transformOrigin: "center",
+                              }}
+                            />
+                            <div className="w-3 h-3 rounded-full bg-blue-600" />
+                          </div>
+                          <p className="text-center mt-2 text-sm text-gray-500">
+                            {getWindDirection(weatherData.current.wind_deg)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
-                      <div
-                        className="bg-[#3b82f6] h-2.5 rounded-full"
-                        style={{ width: `${weatherData.main.humidity}%` }}
-                      />
+
+                    {/* Humidity */}
+                    <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="text-gray-500 font-medium mb-2 flex items-center gap-2">
+                        <Droplet size={18} className="text-blue-600" /> Humidity
+                      </h3>
+                      <div className="flex items-center justify-center mb-4">
+                        <span className="text-4xl font-bold mr-2">{weatherData.current.humidity}</span>
+                        <span className="text-xl">%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                        <div
+                          className="bg-blue-600 h-3 rounded-full"
+                          style={{ width: `${weatherData.current.humidity}%` }}
+                        />
+                      </div>
                       <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>0</span>
-                        <span>50</span>
-                        <span>100</span>
+                        <span>0%</span>
+                        <span>50%</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
+
+                    {/* Pressure */}
+                    <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="text-gray-500 font-medium mb-2 flex items-center gap-2">
+                        <Gauge size={18} className="text-blue-600" /> Pressure
+                      </h3>
+                      <div className="flex items-center justify-center">
+                        <span className="text-4xl font-bold mr-2">{weatherData.current.pressure}</span>
+                        <span className="text-xl">{unit === "metric" ? "hPa" : "inHg"}</span>
+                      </div>
+                      <p className="text-center text-sm text-gray-500 mt-4">
+                        {getPressureDescription(weatherData.current.pressure, unit)}
+                      </p>
+                    </div>
+
+                    {/* Min/Max Temperature */}
+                    <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="text-gray-500 font-medium mb-2 flex items-center gap-2">
+                        <Thermometer size={18} className="text-blue-600" /> Min/Max Temp
+                      </h3>
+                      <div className="flex items-center justify-center gap-6">
+                        <div className="text-center">
+                          <span className="text-blue-600 text-sm mb-1 block">Min</span>
+                          <span className="text-2xl font-bold block">
+                            {Math.round(weatherData.daily[0].temp.min)}°{unit === "metric" ? "C" : "F"}
+                          </span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-red-500 text-sm mb-1 block">Max</span>
+                          <span className="text-2xl font-bold block">
+                            {Math.round(weatherData.daily[0].temp.max)}°{unit === "metric" ? "C" : "F"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
+                </>
+              )}
+
+              {!weatherData && !loading && (
+                <div className="text-center py-16 text-gray-500">
+                  <div className="flex justify-center mb-4">
+                    <Cloud className="w-16 h-16 text-gray-300" />
+                  </div>
+                  <h3 className="text-xl font-medium text-gray-700 mb-2">No Weather Data</h3>
+                  <p>Search for a city to display weather information</p>
                 </div>
-              </>
-            )}
+              )}
+
+              {loading && !weatherData && (
+                <div className="text-center py-16 text-gray-500">
+                  <div className="flex justify-center mb-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  </div>
+                  <p>Loading weather data...</p>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center text-sm text-gray-500 mt-6">
+          <p>Weather data provided by OpenWeatherMap</p>
         </div>
       </div>
     </main>
