@@ -5,7 +5,7 @@ namespace App\Providers;
 use App\Services\WeatherService;
 use Illuminate\Support\ServiceProvider;
 
-class AppServiceProvider extends ServiceProvider
+class WeatherServiceProvider extends ServiceProvider
 {
     public function register()
     {
